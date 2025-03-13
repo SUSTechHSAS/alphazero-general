@@ -8,7 +8,7 @@ import string
 
 import numpy as np
 
-BOARD_SIZE = 4
+BOARD_SIZE = 7
 EMPTY = 0
 PLAYER_X = 1
 PLAYER_O = -1
@@ -41,14 +41,6 @@ class DEChess:
         new_game.currentPlayer = self.currentPlayer
         new_game.boardChanged = self.boardChanged
         return new_game
-
-    # def copy(self):
-    #
-    #
-    #     new_game = DEChess()
-    #     new_game.board = np.copy(self.board)
-    #     new_game.currentPlayer = self.currentPlayer
-    #     return new_game
 
     def initialize_board(self):
         self.board = np.array([[{'type': EMPTY, 'health': 0} for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)])
@@ -227,7 +219,7 @@ class Game(GameState):
     def __init__(self, _board = None):
         super().__init__(_board or self._get_board())
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: 'Game') -> bool:
         return (
             np.asarray(self._board.get_state()) == np.asarray(other._board.get_state())
             and self._player == other._player
@@ -242,7 +234,7 @@ class Game(GameState):
     def _get_board():
         return DEChess()
 
-    def clone(self):
+    def clone(self) -> 'Game':
         # print(f"Clone: {self}")
         g = Game(_board=self._board.copy())
         g._player = self._player
@@ -278,7 +270,7 @@ class Game(GameState):
         self._board.make_move(move[0], move[1])
         self._update_turn()
 
-    def valid_moves(self):
+    def valid_moves(self) -> np.ndarray:
         valids = [0] * self.action_size()
 
         for x, y in self._board.get_valid_moves():
@@ -305,7 +297,7 @@ class Game(GameState):
 
         return np.array(result, dtype=np.uint8)
 
-    def observation(self):
+    def observation(self) -> np.ndarray:
         state = self._board.get_state()
         return np.expand_dims(np.resize(np.asarray(state), (BOARD_SIZE, BOARD_SIZE)), axis=0)
 

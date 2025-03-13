@@ -332,9 +332,9 @@ class MainWindow(Ui_FormMainMenu):
                     f'Num. Turns: {self.arena.game_state.turns}/{self.arena.game_state.max_turns()}'
                 )
 
-            winrates = [round(p.winrate, 3) for p in self.arena.players]
-            if any(winrates):
-                self.lblPitWinrates.setText(f'Win Rates: {winrates}')
+            # winrates = [round(p.winrate, 3) for p in self.arena.players]
+            # if any(winrates):
+            #     self.lblPitWinrates.setText(f'Win Rates: {winrates}')
             self.lblPitEpsTime.setText(f'Episode Time: {round(self.arena.eps_time, 3)}')
             self.lblPitIterTime.setText(f'Total Time: {self.arena.total_time}')
             self.lblPitTimeRemaining.setText(f'Est. Time Remaining: {self.arena.eta}')
@@ -465,6 +465,7 @@ class MainWindow(Ui_FormMainMenu):
 
         self.pit_current_players = []
         for i, player in enumerate(self.pit_player_classes):
+            self.pit_args['_num_players'] = 2
             args = [self.current_env_class, self.pit_args, self.checkConsoleVerbose.isChecked()]
 
             if player.requires_model():
@@ -503,6 +504,8 @@ class MainWindow(Ui_FormMainMenu):
                                     error=True)
                         self.set_pit_controls()
                         return
+
+                self.pit_args['_num_players'] = 2
 
                 evaluator = MCTSEvaluator(
                     args=self.pit_args,
