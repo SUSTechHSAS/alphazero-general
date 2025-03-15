@@ -31,6 +31,7 @@ cdef struct Cell:
 cdef class DEChess:
     cdef:
         Cell** board
+        int step
         int currentPlayer
         bint boardChanged
         readonly int init_health
@@ -44,6 +45,8 @@ cdef class DEChess:
         self.board = <Cell**> malloc(BOARD_SIZE * sizeof(Cell *))
         for i in range(BOARD_SIZE):
             self.board[i] = <Cell *> malloc(BOARD_SIZE * sizeof(Cell))
+
+        self.step = 0
 
         self.init_health = 2
         self.attack_power = 1
@@ -65,6 +68,7 @@ cdef class DEChess:
             [[{'type': self.board[i][j].type, 'health': self.board[i][j].health}
               for j in range(BOARD_SIZE)]
              for i in range(BOARD_SIZE)],
+            self.step,
             self.currentPlayer,
             self.boardChanged,
             self.init_health,
@@ -78,7 +82,7 @@ cdef class DEChess:
 
     def __setstate__(self, state):
         # Reconstruct object from saved state
-        board_state, current_player, board_changed, init_health, attack_power, heal_power, is_diag_heal, is_diag_attack = state
+        board_state, step, current_player, board_changed, init_health, attack_power, heal_power, is_diag_heal, is_diag_attack = state
 
         # Allocate board memory
         self.board = <Cell**> malloc(BOARD_SIZE * sizeof(Cell *))
@@ -92,6 +96,7 @@ cdef class DEChess:
                 self.board[i][j].health = board_state[i][j]['health']
 
         # Restore other attributes
+        self.step = step
         self.currentPlayer = current_player
         self.boardChanged = board_changed
         self.init_health = init_health
@@ -100,7 +105,7 @@ cdef class DEChess:
         self.is_diag_heal = is_diag_heal
         self.is_diag_attack = is_diag_attack
 
-    cpdef initialize_board(self):
+    cpdef void initialize_board(self):
         cdef int i, j
         for i in range(BOARD_SIZE):
             for j in range(BOARD_SIZE):
@@ -175,113 +180,29 @@ cdef class DEChess:
             else:
                 self.board[row][col].health -= direct_count * self.attack_power
 
-    cpdef refresh_board(self):
-
+    cpdef void refresh_cell(self, int x, int y, int player):
         cdef:
-            int i, j
-            int opponent = PLAYER_O if self.currentPlayer == PLAYER_X else PLAYER_X
-            bint needs_block_rule = not (
-                        self.is_diag_heal and self.is_diag_attack and self.attack_power == self.heal_power)
+            int opponent = PLAYER_O if player == PLAYER_X else PLAYER_X
+            int r, c, i
+            int[4][2] direct_neighbors = [[-1, 0], [0, -1], [0, 1], [1, 0]]
+            int[4][2] diag_neighbors = [[-1, -1], [-1, 1], [1, -1], [1, 1]]
 
-        self.boardChanged = False
-        if not isDiagHeal or not isDiagAttack or attackpower != healpower:
-            self._apply_block_rule()
-        for i in range(BOARD_SIZE):
-            for j in range(BOARD_SIZE):
-                if self.board[i][j].type != EMPTY:
-                    self.heal_rule(i, j)
-        for i in range(BOARD_SIZE):
-            for j in range(BOARD_SIZE):
-                if self.board[i][j].type == self.currentPlayer:
-                    self.damage_rule(i, j, self.currentPlayer)
-        for i in range(BOARD_SIZE):
-            for j in range(BOARD_SIZE):
-                if self.board[i][j].type == self.currentPlayer:
-                    if self.board[i][j].health <= 0:
-                        self.board[i][j].type = -self.currentPlayer
-                        self.board[i][j].health = self.init_health
-                        self.boardChanged = True
-                    # self.death_rule(i, j)
-        for i in range(BOARD_SIZE):
-            for j in range(BOARD_SIZE):
-                if self.board[i][j].type != EMPTY:
-                    self.heal_rule(i, j)
-        opponent = PLAYER_O if self.currentPlayer == PLAYER_X else PLAYER_X
-        for i in range(BOARD_SIZE):
-            for j in range(BOARD_SIZE):
-                if self.board[i][j].type == opponent:
-                    self.damage_rule(i, j, opponent)
-        for i in range(BOARD_SIZE):
-            for j in range(BOARD_SIZE):
-                if self.board[i][j].type == opponent:
-                    # self.death_rule(i, j)
-                    if self.board[i][j].health <= 0:
-                        self.board[i][j].type = self.currentPlayer
-                        self.board[i][j].health = self.init_health
-                        self.boardChanged = True
-
-        # cdef:
-        #     int i, j
-        #     int opponent = PLAYER_O if self.currentPlayer == PLAYER_X else PLAYER_X
-        #     bint needs_block_rule = not (
-        #                 self.is_diag_heal and self.is_diag_attack and self.attack_power == self.heal_power)
-        #
-        # self.boardChanged = False
-        #
-        # # Apply block rule if needed
-        # if needs_block_rule:
-        #     self._apply_block_rule()
-        #
-        # # Process current player pieces
-        # self._process_player_pieces(self.currentPlayer)
-        #
-        # # Process opponent pieces
-        # self._process_player_pieces(opponent)
-        #
-        # # Final healing if board changed
-        # if self.boardChanged:
-        #     for i in range(BOARD_SIZE):
-        #         for j in range(BOARD_SIZE):
-        #             if self.board[i][j].type != EMPTY:
-        #                 self.heal_rule(i, j)
-
-    cdef inline void _apply_block_rule(self):
-        cdef:
-            int i, j, r, c, x_count, o_count
-            int[4][2] neighbors = [[-1, 0], [0, -1], [0, 1], [1, 0]]
-
-        for i in range(BOARD_SIZE):
-            for j in range(BOARD_SIZE):
-                x_count = o_count = 0
-                for k in range(4):
-                    r = i + neighbors[k][0]
-                    c = j + neighbors[k][1]
+        if self.board[x][y].type == player:
+            self.heal_rule(x, y)
+            self.damage_rule(x, y, player)
+            if self.board[x][y].health <= 0:
+                self.board[x][y].type = -player
+                self.board[x][y].health = self.init_health
+                for i in range(4):
+                    r = x + direct_neighbors[i][0]
+                    c = y + direct_neighbors[i][1]
                     if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
-                        if self.board[r][c].type == PLAYER_X:
-                            x_count += 1
-                        elif self.board[r][c].type == PLAYER_O:
-                            o_count += 1
-                if x_count >= 2 and o_count >= 2:
-                    self.board[i][j].type = BLOCK
-                    self.board[i][j].health = 0
-
-    cdef inline void _process_player_pieces(self, int player):
-        cdef int i, j
-        # Apply healing
-        for i in range(BOARD_SIZE):
-            for j in range(BOARD_SIZE):
-                if self.board[i][j].type == player:
-                    self.heal_rule(i, j)
-
-        # Apply damage and death
-        for i in range(BOARD_SIZE):
-            for j in range(BOARD_SIZE):
-                if self.board[i][j].type == player:
-                    self.damage_rule(i, j, player)
-                    if self.board[i][j].health <= 0:
-                        self.board[i][j].type = -player
-                        self.board[i][j].health = self.init_health
-                        self.boardChanged = True
+                        self.refresh_cell(r, c, player)
+                for i in range(4):
+                    r = x + diag_neighbors[i][0]
+                    c = y + diag_neighbors[i][1]
+                    if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
+                        self.refresh_cell(r, c, player)
 
     # Add to the DEChess class in diseatchess.pyx
 
@@ -312,16 +233,33 @@ cdef class DEChess:
         return valid_moves
 
     cpdef make_move(self, int row, int col):
+        cdef:
+            int opponent = PLAYER_O if self.currentPlayer == PLAYER_X else PLAYER_X
+            int r, c, i
+            int[4][2] direct_neighbors = [[-1, 0], [0, -1], [0, 1], [1, 0]]
+            int[4][2] diag_neighbors = [[-1, -1], [-1, 1], [1, -1], [1, 1]]
+
         if self.board[row][col].type != EMPTY:
             raise RuntimeError('Cannot make a move')
 
         self.board[row][col].type = self.currentPlayer
         self.board[row][col].health = self.init_health
-        self.boardChanged = True
 
-        while self.boardChanged:
-            self.boardChanged = False
-            self.refresh_board()
+        self.refresh_cell(row, col, self.currentPlayer)
+
+        if self.board[row][col].type == self.currentPlayer:
+            for i in range(4):
+                r = row + direct_neighbors[i][0]
+                c = col + direct_neighbors[i][1]
+                if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
+                    self.refresh_cell(r, c, opponent)
+            for i in range(4):
+                r = row + diag_neighbors[i][0]
+                c = col + diag_neighbors[i][1]
+                if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
+                    self.refresh_cell(r, c, opponent)
+
+        self.step += 1
 
         winner = self.determine_winner()
         if winner is not None:
@@ -342,12 +280,7 @@ cdef class DEChess:
         return None
 
     cpdef bint is_board_full(self):
-        cdef int i, j
-        for i in range(BOARD_SIZE):
-            for j in range(BOARD_SIZE):
-                if self.board[i][j].type == EMPTY:
-                    return False
-        return True
+        return self.step == BOARD_SIZE * BOARD_SIZE
 
     cpdef tuple count_pieces(self):
         cdef:
@@ -393,6 +326,7 @@ cdef class DEChess:
                 new_game.board[i][j].type = self.board[i][j].type
                 new_game.board[i][j].health = self.board[i][j].health
 
+        new_game.step = self.step
         new_game.currentPlayer = self.currentPlayer
         new_game.boardChanged = self.boardChanged
         new_game.init_health = self.init_health
