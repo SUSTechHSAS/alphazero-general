@@ -146,6 +146,8 @@ cdef class DEChess:
                 self.board[row][col].health = self.init_health + (direct_count + diag_count) * self.heal_power - 1
             else:
                 self.board[row][col].health = self.init_health + direct_count * self.heal_power - 1
+        else:
+            self.board[row][col].health = self.init_health
 
     cdef inline void damage_rule(self, int row, int col, int currentPlayer):
         cdef:
